@@ -14,47 +14,35 @@ import (
 
 func main() {
 	fmt.Println("Starting Peril client...")
+	const rabbitConnString = "amqp://guest:guest@localhost:5672/"
 
-	connectionString := "amqp://guest@localhost:5672/"
-	connection, err := amqp.Dial(connectionString)
+	conn, err := amqp.Dial(rabbitConnString)
 	if err != nil {
-		log.Fatalf("Error making connection: %v", err)
-		return
+		log.Fatalf("could not connect to RabbitMQ: %v", err)
 	}
-
-	defer connection.Close()
-
-	fmt.Println("Connection was successful")
-
-	cntnChan, err := connection.Channel()
-	if err != nil {
-		log.Fatalf("Error creating connection channel: %v", err)
-		return
-	}
-
-	err = pubsub.PublishJSON(cntnChan, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: true})
-	if err != nil {
-		log.Fatalf("Error publishing json: %v", err)
-		return
-	}
+	defer conn.Close()
+	fmt.Println("Peril game client connected to RabbitMQ!")
 
 	username, err := gamelogic.ClientWelcome()
 	if err != nil {
-		log.Fatalf("Error getting client username: %v", err)
-		return
+		log.Fatalf("could not get username: %v", err)
 	}
 
-	_, _, err = pubsub.DeclareAndBind(connection, routing.ExchangePerilDirect, fmt.Sprintf("%s.%s", routing.PauseKey, username), routing.PauseKey, pubsub.Transient)
+	_, queue, err := pubsub.DeclareAndBind(
+		conn,
+		routing.ExchangePerilDirect,
+		routing.PauseKey+"."+username,
+		routing.PauseKey,
+		pubsub.SimpleQueueTransient,
+	)
 	if err != nil {
-		log.Fatalf("Error declaring and binding: %v", err)
-		return
+		log.Fatalf("could not subscribe to pause: %v", err)
 	}
+	fmt.Printf("Queue %v declared and bound!\n", queue.Name)
 
+	// wait for ctrl+c
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt)
 	<-signalChan
-
-	fmt.Println("Shutting program down...")
-
-	defer connection.Close()
+	fmt.Println("RabbitMQ connection closed.")
 }

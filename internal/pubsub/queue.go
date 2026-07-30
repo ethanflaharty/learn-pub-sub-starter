@@ -20,12 +20,12 @@ func DeclareAndBind(
 
 	queue := amqp.Queue{}
 	switch queueType {
-	case Durable:
+	case SimpleQueueDurable:
 		queue, err = channel.QueueDeclare(queueName, true, false, false, false, nil)
 		if err != nil {
 			return &amqp.Channel{}, amqp.Queue{}, err
 		}
-	case Transient:
+	case SimpleQueueTransient:
 		queue, err = channel.QueueDeclare(queueName, false, true, true, false, nil)
 		if err != nil {
 			return &amqp.Channel{}, amqp.Queue{}, err
@@ -42,6 +42,6 @@ func DeclareAndBind(
 type SimpleQueueType int
 
 const (
-	Durable SimpleQueueType = iota
-	Transient
+	SimpleQueueDurable SimpleQueueType = iota
+	SimpleQueueTransient
 )

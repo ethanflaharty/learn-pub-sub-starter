@@ -3,44 +3,67 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
-	"os/signal"
 
+	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 func main() {
-	fmt.Println("Starting Peril server...")
-	connectionString := "amqp://guest@localhost:5672/"
-	connection, err := amqp.Dial(connectionString)
+	const connString = "amqp://guest:guest@localhost:5672/"
+
+	conn, err := amqp.Dial(connString)
 	if err != nil {
 		log.Fatalf("Error making connection: %v", err)
-		return
 	}
-
-	defer connection.Close()
-
+	defer conn.Close()
 	fmt.Println("Connection was successful")
 
-	cntnChan, err := connection.Channel()
+	cntnChan, err := conn.Channel()
 	if err != nil {
 		log.Fatalf("Error creating connection channel: %v", err)
-		return
 	}
 
-	err = pubsub.PublishJSON(cntnChan, routing.ExchangePerilDirect, routing.PauseKey, routing.PlayingState{IsPaused: true})
-	if err != nil {
-		log.Fatalf("Error publishing json: %v", err)
-		return
+	gamelogic.PrintServerHelp()
+
+	for {
+		words := gamelogic.GetInput()
+		if len(words) == 0 {
+			continue
+		}
+		switch words[0] {
+		case "pause":
+			fmt.Println("Publishing paused game state")
+			err = pubsub.PublishJSON(
+				cntnChan,
+				routing.ExchangePerilDirect,
+				routing.PauseKey,
+				routing.PlayingState{
+					IsPaused: true,
+				},
+			)
+			if err != nil {
+				log.Printf("could not publish time: %v", err)
+			}
+		case "resume":
+			fmt.Println("Publishing resumes game state")
+			err = pubsub.PublishJSON(
+				cntnChan,
+				routing.ExchangePerilDirect,
+				routing.PauseKey,
+				routing.PlayingState{
+					IsPaused: false,
+				},
+			)
+			if err != nil {
+				log.Printf("could not publish time: %v", err)
+			}
+		case "quit":
+			log.Println("goodbye")
+			return
+		default:
+			fmt.Println("unknown command")
+		}
 	}
-
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, os.Interrupt)
-	<-signalChan
-
-	fmt.Println("Shutting program down...")
-
-	defer connection.Close()
 }
