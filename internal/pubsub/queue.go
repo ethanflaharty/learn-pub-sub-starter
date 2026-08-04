@@ -13,30 +13,37 @@ func DeclareAndBind(
 	key string,
 	queueType SimpleQueueType,
 ) (*amqp.Channel, amqp.Queue, error) {
-	channel, err := conn.Channel()
+	ch, err := conn.Channel()
 	if err != nil {
-		return &amqp.Channel{}, amqp.Queue{}, err
+		return nil, amqp.Queue{}, fmt.Errorf("could not create channel: %v", err)
 	}
 
-	queue := amqp.Queue{}
-	switch queueType {
-	case SimpleQueueDurable:
-		queue, err = channel.QueueDeclare(queueName, true, false, false, false, nil)
-		if err != nil {
-			return &amqp.Channel{}, amqp.Queue{}, err
-		}
-	case SimpleQueueTransient:
-		queue, err = channel.QueueDeclare(queueName, false, true, true, false, nil)
-		if err != nil {
-			return &amqp.Channel{}, amqp.Queue{}, err
-		}
-	default:
-		return &amqp.Channel{}, amqp.Queue{}, fmt.Errorf("queueType must be durable or transient: %v", err)
+	queue, err := ch.QueueDeclare(
+		queueName,
+		queueType == SimpleQueueDurable,
+		queueType != SimpleQueueDurable,
+		queueType != SimpleQueueDurable,
+		false,
+		amqp.Table{
+			"x-dead-letter-exchange": "peril_dlx",
+		},
+	)
+	if err != nil {
+		return nil, amqp.Queue{}, fmt.Errorf("could not declare queue: %v", err)
 	}
 
-	channel.QueueBind(queueName, key, exchange, false, nil)
+	err = ch.QueueBind(
+		queue.Name,
+		key,
+		exchange,
+		false,
+		nil,
+	)
+	if err != nil {
+		return nil, amqp.Queue{}, fmt.Errorf("could not declare queue: %v", err)
+	}
 
-	return channel, queue, nil
+	return ch, queue, nil
 }
 
 type SimpleQueueType int
