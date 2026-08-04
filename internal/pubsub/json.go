@@ -3,7 +3,7 @@ package pubsub
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"fmt"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -22,33 +22,57 @@ func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	return nil
 }
 
+type AckType int
+
+const (
+	Ack AckType = iota
+	NackDiscard
+	NackRequeue
+)
+
 func SubscribeJSON[T any](
 	conn *amqp.Connection,
 	exchange,
 	queueName,
 	key string,
 	queueType SimpleQueueType,
-	handler func(T),
+	handler func(T) AckType,
 ) error {
 	chn, _, err := DeclareAndBind(conn, exchange, queueName, key, queueType)
 	if err != nil {
 		return err
 	}
 
-	deliveryChan, err := chn.Consume(queueName, "", false, false, false, false, nil)
+	msgs, err := chn.Consume(queueName, "", false, false, false, false, nil)
 	if err != nil {
 		return err
 	}
 
-	var v T
+	unmarshaller := func(data []byte) (T, error) {
+		var target T
+		err := json.Unmarshal(data, &target)
+		return target, err
+	}
+
 	go func() {
-		for delivery := range deliveryChan {
-			err = json.Unmarshal(delivery.Body, &v)
+		defer chn.Close()
+		for msg := range msgs {
+			target, err := unmarshaller(msg.Body)
 			if err != nil {
-				log.Fatalf("")
+				fmt.Printf("could not unmarshal message: %v\n", err)
+				continue
 			}
-			handler(v)
-			delivery.Ack(false)
+			switch handler(target) {
+			case Ack:
+				msg.Ack(false)
+				fmt.Println("Ack")
+			case NackDiscard:
+				msg.Nack(false, false)
+				fmt.Println("NackDiscard")
+			case NackRequeue:
+				msg.Nack(false, true)
+				fmt.Println("NackRequeue")
+			}
 		}
 	}()
 
