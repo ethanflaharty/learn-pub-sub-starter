@@ -39,7 +39,7 @@ func main() {
 		routing.ArmyMovesPrefix+"."+gs.GetUsername(),
 		routing.ArmyMovesPrefix+".*",
 		pubsub.SimpleQueueTransient,
-		handlerMove(gs),
+		handlerMove(gs, publishCh),
 	)
 	if err != nil {
 		log.Fatalf("error subscribing JSON: %v", err)
@@ -52,6 +52,18 @@ func main() {
 		routing.PauseKey,
 		pubsub.SimpleQueueTransient,
 		handlerPause(gs),
+	)
+	if err != nil {
+		log.Fatalf("error subscribing JSON: %v", err)
+	}
+
+	err = pubsub.SubscribeJSON(
+		conn,
+		routing.ExchangePerilTopic,
+		routing.WarRecognitionsPrefix,
+		routing.WarRecognitionsPrefix+"."+gs.GetUsername(),
+		pubsub.SimpleQueueDurable,
+		handlerWar(gs),
 	)
 	if err != nil {
 		log.Fatalf("error subscribing JSON: %v", err)
